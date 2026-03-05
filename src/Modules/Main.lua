@@ -110,6 +110,7 @@ function main:Init()
 	self.notSupportedModTooltips = true
 	self.notSupportedTooltipText = " ^8(Not supported in PoB yet)"
 	self.POESESSID = ""
+	self.aiAPIKey = ""
 	self.showPublicBuilds = true
 	self.showFlavourText = true
 	self.showAnimations = true
@@ -660,6 +661,7 @@ function main:LoadSettings(ignoreBuild)
 					self.dpiScaleOverridePercent = tonumber(node.attrib.dpiScaleOverridePercent) or 0
 					SetDPIScaleOverridePercent(self.dpiScaleOverridePercent)
 				end
+				self.aiAPIKey = node.attrib.aiAPIKey or ""
 			end
 		end
 	end
@@ -791,6 +793,7 @@ function main:SaveSettings()
 		showAnimations = tostring(self.showAnimations),
 		showAllItemAffixes = tostring(self.showAllItemAffixes),
 		dpiScaleOverridePercent = tostring(self.dpiScaleOverridePercent),
+		aiAPIKey = self.aiAPIKey,
 	} })
 	local res, errMsg = common.xml.SaveXMLFile(setXML, self.userPath.."Settings.xml")
 	if not res then

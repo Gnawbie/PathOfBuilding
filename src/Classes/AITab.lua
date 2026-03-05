@@ -72,13 +72,13 @@ local AITabClass = newClass("AITab", "ControlHost", "Control", function(self, bu
 		return not self.requesting and #self.apiKey > 0 and #self.controls.promptInput.buf > 0
 	end
 
-	self.controls.includeContextChk = new("CheckBoxControl", {"LEFT",self.controls.generateBtn,"RIGHT"}, {16, 0, 18, 18},
+	self.controls.includeContextChk = new("CheckBoxControl", {"TOPLEFT",self.controls.generateBtn,"BOTTOMLEFT"}, {220, 8, 18, 18},
 		"Include current build as context", function(state)
 			self.includeContext = state
 		end, nil, true)
 
 	-- === Status label ===
-	self.controls.statusLabel = new("LabelControl", {"TOPLEFT",self.controls.generateBtn,"BOTTOMLEFT"}, {0, 6, 0, 16},
+	self.controls.statusLabel = new("LabelControl", {"TOPLEFT",self.controls.includeContextChk,"BOTTOMLEFT"}, {-220, 6, 0, 16},
 		function() return self.aiStatus end)
 
 	-- === Response display (fills remaining tab space) ===

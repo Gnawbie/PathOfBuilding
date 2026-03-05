@@ -13,6 +13,12 @@ local MODELS = {
 }
 local DEFAULT_MODEL = 2  -- Sonnet
 
+-- Fallback class name→ID map (PoB's class IDs are stable)
+local CLASS_NAME_MAP = {
+	scion = 0, marauder = 1, ranger = 2,
+	witch = 3, duelist = 4, templar = 5, shadow = 6,
+}
+
 local AITabClass = newClass("AITab", "ControlHost", "Control", function(self, build)
 	self.ControlHost()
 	self.Control()
@@ -91,10 +97,10 @@ local AITabClass = newClass("AITab", "ControlHost", "Control", function(self, bu
 		return self.width - 40
 	end
 	self.controls.responseBox.height = function()
-		return self.height - 290
+		return self.height - 320  -- leave room for buttons below
 	end
 
-	-- === Copy / Clear buttons ===
+	-- === Copy / Clear / Apply buttons ===
 	self.controls.copyBtn = new("ButtonControl", {"TOPLEFT",self.controls.responseBox,"BOTTOMLEFT"}, {0, 6, 100, 20},
 		"Copy Response", function()
 			Copy(self.aiResponse)
@@ -109,6 +115,14 @@ local AITabClass = newClass("AITab", "ControlHost", "Control", function(self, bu
 			self.aiStatus = ""
 			self.controls.responseBox:SetText("")
 		end)
+
+	self.controls.applyBtn = new("ButtonControl", {"LEFT",self.controls.clearBtn,"RIGHT"}, {8, 0, 160, 20},
+		"Apply Build to PoB", function()
+			self:ApplyBuild()
+		end)
+	self.controls.applyBtn.enabled = function()
+		return not self.requesting and #self.aiResponse > 0
+	end
 end)
 
 function AITabClass:Draw(viewPort, inputEvents)
@@ -263,7 +277,7 @@ function AITabClass:HandleResponse(responseText)
 		local text = data.content[1].text
 		self.aiResponse = text
 		self.controls.responseBox:SetText(text)
-		self.aiStatus = "^2Done!"
+		self.aiStatus = "^2Done! Click 'Apply Build to PoB' to apply gems and class."
 	elseif data and data.error and data.error.message then
 		self.aiStatus = "^1API Error: " .. data.error.message
 	else
@@ -272,7 +286,220 @@ function AITabClass:HandleResponse(responseText)
 	end
 end
 
--- Simple JSON string encoder
+-- ============================================================
+--  APPLY BUILD
+-- ============================================================
+
+function AITabClass:ApplyBuild()
+	if self.requesting then return end
+	if #self.aiResponse == 0 then
+		self.aiStatus = "^1No response to apply"
+		return
+	end
+
+	self.requesting = true
+	self.aiStatus = "^xFFD700Extracting build data..."
+
+	local extractPrompt = table.concat({
+		"From the following Path of Exile build advice, extract a JSON object with exactly these fields:",
+		"  \"class\": one of [Marauder, Ranger, Witch, Duelist, Templar, Shadow, Scion]",
+		"  \"ascendancy\": the ascendancy subclass name, or \"None\" if not mentioned",
+		"  \"gems\": an array of up to 6 gem name strings for the main skill link (active skill first, then supports)",
+		"",
+		"Rules:",
+		"- Output ONLY valid JSON. No markdown, no explanation, no code fences.",
+		"- Use exact PoB gem names where possible (e.g. \"Lightning Strike\", \"Multistrike Support\").",
+		"- If the class is not clearly stated, infer it from the ascendancy.",
+		"- If a field cannot be determined, use null for strings or [] for the gems array.",
+		"",
+		"Build advice:",
+		self.aiResponse,
+	}, "\n")
+
+	local systemPrompt = "You extract structured data from Path of Exile build descriptions. Output ONLY valid JSON with no surrounding text."
+
+	local model = MODELS[self.modelIndex] and MODELS[self.modelIndex].id or MODELS[DEFAULT_MODEL].id
+
+	local requestBody = string.format(
+		'{"model":%s,"max_tokens":400,"system":%s,"messages":[{"role":"user","content":%s}]}',
+		jsonEncode(model),
+		jsonEncode(systemPrompt),
+		jsonEncode(extractPrompt)
+	)
+
+	launch:DownloadPage(
+		"https://api.anthropic.com/v1/messages",
+		function(response, errMsg)
+			self.requesting = false
+			if errMsg then
+				self.aiStatus = "^1Apply failed: " .. errMsg
+				return
+			end
+			self:HandleApplyResponse(response.body)
+		end,
+		{
+			header = "Content-Type: application/json\nx-api-key: " .. self.apiKey .. "\nanthropic-version: 2023-06-01",
+			body = requestBody,
+		}
+	)
+end
+
+function AITabClass:HandleApplyResponse(responseText)
+	local data, _, err = dkjson.decode(responseText)
+	if not (data and data.content and data.content[1] and data.content[1].text) then
+		if data and data.error and data.error.message then
+			self.aiStatus = "^1API Error: " .. data.error.message
+		else
+			self.aiStatus = "^1Error: Could not parse API response"
+			ConPrintf("AI apply raw: %s", responseText:sub(1, 300))
+		end
+		return
+	end
+
+	local jsonText = data.content[1].text
+
+	-- Strip markdown code fences if Claude wrapped the JSON anyway
+	local stripped = jsonText:match("```json%s*(.-)%s*```")
+		or jsonText:match("```%s*(.-)%s*```")
+		or jsonText
+	stripped = stripped:gsub("^%s+", ""):gsub("%s+$", "")
+
+	local buildData, _, parseErr = dkjson.decode(stripped)
+	if not buildData then
+		self.aiStatus = "^1Error: Could not parse build JSON"
+		ConPrintf("AI apply JSON (failed): %s", stripped:sub(1, 300))
+		return
+	end
+
+	self:ApplyBuildData(buildData)
+end
+
+function AITabClass:ApplyBuildData(buildData)
+	local build    = self.build
+	local spec     = build.spec
+	local skillsTab = build.skillsTab
+	local applied  = {}
+
+	-- ---- Class -------------------------------------------------------
+	local className = type(buildData.class) == "string" and buildData.class or nil
+	if className then
+		-- Try tree.classes first (runtime data), fall back to hardcoded map
+		local classId = nil
+		if spec.tree and spec.tree.classes then
+			for cId, cData in pairs(spec.tree.classes) do
+				if cData.name and cData.name:lower() == className:lower() then
+					classId = cId
+					break
+				end
+			end
+		end
+		if classId == nil then
+			classId = CLASS_NAME_MAP[className:lower()]
+		end
+
+		if classId ~= nil then
+			spec:SelectClass(classId)
+			t_insert(applied, "Class → " .. className)
+
+			-- ---- Ascendancy ------------------------------------------
+			local ascendName = type(buildData.ascendancy) == "string" and buildData.ascendancy or nil
+			if ascendName and ascendName:lower() ~= "none" and ascendName ~= "" then
+				local curClass = spec.curClass
+				if curClass and curClass.classes then
+					for ascId, ascData in pairs(curClass.classes) do
+						if ascId > 0 and ascData.name and ascData.name:lower() == ascendName:lower() then
+							spec:SelectAscendClass(ascId)
+							t_insert(applied, "Ascendancy → " .. ascendName)
+							break
+						end
+					end
+				end
+			end
+		else
+			ConPrintf("AI Apply: unknown class '%s'", className)
+			self.aiStatus = "^1Unknown class: " .. className
+			return
+		end
+	end
+
+	-- ---- Gems --------------------------------------------------------
+	local gems = type(buildData.gems) == "table" and buildData.gems or nil
+	if gems and #gems > 0 then
+		local gemList = {}
+		local skipped = {}
+		for _, gemName in ipairs(gems) do
+			if type(gemName) == "string" and #gemName > 0 then
+				-- Validate against PoB gem database
+				local errMsg, gemData = skillsTab:FindSkillGem(gemName)
+				if gemData then
+					-- Use the canonical name from the database
+					t_insert(gemList, {
+						nameSpec       = gemData.name,
+						level          = 20,
+						quality        = 0,
+						qualityId      = "Default",
+						enabled        = true,
+						count          = 1,
+						enableGlobal1  = true,
+						enableGlobal2  = false,
+					})
+				else
+					-- Not found — still add by name so the user can see it
+					t_insert(gemList, {
+						nameSpec       = gemName,
+						level          = 20,
+						quality        = 0,
+						qualityId      = "Default",
+						enabled        = true,
+						count          = 1,
+						enableGlobal1  = true,
+						enableGlobal2  = false,
+					})
+					t_insert(skipped, gemName)
+				end
+			end
+		end
+
+		if #gemList > 0 then
+			local socketGroup = {
+				enabled               = true,
+				includeInFullDPS      = false,
+				label                 = "AI: " .. (self.controls.promptInput.buf or "generated"),
+				slot                  = "",
+				source                = "",
+				mainActiveSkill       = 1,
+				mainActiveSkillCalcs  = 1,
+				gemList               = gemList,
+			}
+
+			-- Append to the active socket group list
+			t_insert(skillsTab.socketGroupList, socketGroup)
+			skillsTab:ProcessSocketGroup(socketGroup)
+
+			local gemNames = {}
+			for _, g in ipairs(gemList) do t_insert(gemNames, g.nameSpec) end
+			t_insert(applied, #gemList .. " gems added")
+
+			if #skipped > 0 then
+				ConPrintf("AI Apply: unrecognised gems (added anyway): %s", table.concat(skipped, ", "))
+			end
+		end
+	end
+
+	-- ---- Save undo state + trigger recalc ----------------------------
+	skillsTab:AddUndoState()
+	build.buildFlag = true
+
+	if #applied > 0 then
+		self.aiStatus = "^2Applied: " .. table.concat(applied, ", ") .. "  (check Skills tab)"
+	else
+		self.aiStatus = "^3Nothing was applied (class/gems not found in response)"
+	end
+end
+
+-- ============================================================
+--  Simple JSON string encoder (used when building request body)
+-- ============================================================
 function jsonEncode(str)
 	str = str:gsub('\\', '\\\\')
 	str = str:gsub('"', '\\"')

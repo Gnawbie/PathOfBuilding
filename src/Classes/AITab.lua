@@ -482,7 +482,11 @@ function AITabClass:ApplyBuildData(buildData)
 				gemList = gemList,
 			}
 			t_insert(skillsTab.socketGroupList, socketGroup)
-			skillsTab:ProcessSocketGroup(socketGroup)
+			-- Must set selIndex/selValue AND call SetDisplayGroup (not ProcessSocketGroup)
+			-- so the list control registers the new entry and the gem slots are populated
+			skillsTab.controls.groupList.selIndex = #skillsTab.socketGroupList
+			skillsTab.controls.groupList.selValue = socketGroup
+			skillsTab:SetDisplayGroup(socketGroup)
 			t_insert(applied, #gemList .. " gems added")
 			if #skipped > 0 then
 				ConPrintf("AI Apply: unrecognised gems: %s", table.concat(skipped, ", "))
@@ -490,6 +494,7 @@ function AITabClass:ApplyBuildData(buildData)
 		end
 	end
 
+	spec:AddUndoState()
 	skillsTab:AddUndoState()
 	build.buildFlag = true
 

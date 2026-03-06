@@ -481,12 +481,30 @@ function AITabClass:ApplyBuildData(buildData)
 				slot = "", source = "", mainActiveSkill = 1, mainActiveSkillCalcs = 1,
 				gemList = gemList,
 			}
+			ConPrintf("AI Apply: socketGroupList length before insert = %d", #skillsTab.socketGroupList)
 			t_insert(skillsTab.socketGroupList, socketGroup)
-			-- Must set selIndex/selValue AND call SetDisplayGroup (not ProcessSocketGroup)
-			-- so the list control registers the new entry and the gem slots are populated
-			skillsTab.controls.groupList.selIndex = #skillsTab.socketGroupList
-			skillsTab.controls.groupList.selValue = socketGroup
-			skillsTab:SetDisplayGroup(socketGroup)
+			ConPrintf("AI Apply: socketGroupList length after insert = %d", #skillsTab.socketGroupList)
+
+			-- Update the list control selection
+			local gl = skillsTab.controls.groupList
+			if gl then
+				gl.selIndex = #skillsTab.socketGroupList
+				gl.selValue = socketGroup
+				ConPrintf("AI Apply: groupList selIndex set to %d", gl.selIndex)
+			else
+				ConPrintf("AI Apply: WARNING controls.groupList is nil")
+			end
+
+			-- SetDisplayGroup initialises gem slots for editing (calls ProcessSocketGroup internally)
+			local ok, err = pcall(function() skillsTab:SetDisplayGroup(socketGroup) end)
+			if not ok then
+				ConPrintf("AI Apply: SetDisplayGroup ERROR: %s", tostring(err))
+				-- Fallback: call ProcessSocketGroup directly
+				pcall(function() skillsTab:ProcessSocketGroup(socketGroup) end)
+			else
+				ConPrintf("AI Apply: SetDisplayGroup OK")
+			end
+
 			t_insert(applied, #gemList .. " gems added")
 			if #skipped > 0 then
 				ConPrintf("AI Apply: unrecognised gems: %s", table.concat(skipped, ", "))
@@ -497,6 +515,7 @@ function AITabClass:ApplyBuildData(buildData)
 	spec:AddUndoState()
 	skillsTab:AddUndoState()
 	build.buildFlag = true
+	ConPrintf("AI Apply: done, buildFlag set")
 
 	self.aiStatus = #applied > 0
 		and "^2Applied: " .. table.concat(applied, ", ") .. "  (check Skills tab)"

@@ -515,10 +515,20 @@ function AITabClass:ApplyBuildData(buildData)
 	spec:AddUndoState()
 	skillsTab:AddUndoState()
 	build.buildFlag = true
-	ConPrintf("AI Apply: done, buildFlag set")
+
+	-- Force Skills tab to reinitialise its list from the active skill set
+	-- (same thing SetActiveSkillSet does, without touching the data)
+	skillsTab.controls.groupList.list = skillsTab.socketGroupList
+
+	local sgCount = #skillsTab.socketGroupList
+	ConPrintf("AI Apply: done. socketGroupList final length = %d", sgCount)
+	for i, sg in ipairs(skillsTab.socketGroupList) do
+		ConPrintf("AI Apply:  [%d] label='%s' gems=%d", i, sg.label or "", #(sg.gemList or {}))
+	end
 
 	self.aiStatus = #applied > 0
-		and "^2Applied: " .. table.concat(applied, ", ") .. "  (check Skills tab)"
+		and "^2Applied: " .. table.concat(applied, ", ") ..
+			string.format(" | SG list size: %d", sgCount) .. " (check Skills tab)"
 		or  "^3Nothing was applied"
 end
 

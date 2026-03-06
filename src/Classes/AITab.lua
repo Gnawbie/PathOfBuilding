@@ -246,6 +246,7 @@ function AITabClass:SendRequest()
 Be specific, practical, and concise. If a current build context is provided, tailor advice to improve or pivot it.]]
 
 	local model = MODELS[self.modelIndex] and MODELS[self.modelIndex].id or MODELS[DEFAULT_MODEL].id
+	ConPrintf("AI: using model '%s'", model)
 
 	local requestBody = string.format(
 		'{"model":%s,"max_tokens":1500,"system":%s,"messages":[{"role":"user","content":%s}]}',
@@ -253,13 +254,23 @@ Be specific, practical, and concise. If a current build context is provided, tai
 		jsonEncode(systemPrompt),
 		jsonEncode(userMessage)
 	)
+	ConPrintf("AI: request body (first 200): %s", requestBody:sub(1, 200))
 
 	launch:DownloadPage(
 		"https://api.anthropic.com/v1/messages",
 		function(response, errMsg)
 			self.requesting = false
 			if errMsg then
-				self.aiStatus = "^1Request failed: " .. errMsg
+				-- Try to extract Anthropic's detailed error message from the response body
+				local detail = ""
+				if response and response.body and #response.body > 0 then
+					ConPrintf("AI error body: %s", response.body:sub(1, 400))
+					local errData = dkjson.decode(response.body)
+					if errData and errData.error and errData.error.message then
+						detail = ": " .. errData.error.message
+					end
+				end
+				self.aiStatus = "^1Request failed: " .. errMsg .. detail
 				return
 			end
 			self:HandleResponse(response.body)

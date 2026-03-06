@@ -7,9 +7,9 @@ local m_floor = math.floor
 local dkjson = require "dkjson"
 
 local MODELS = {
-	{ label = "Haiku  (Fast)",     id = "claude-haiku-4-5"  },
-	{ label = "Sonnet (Balanced)", id = "claude-sonnet-4-5" },
-	{ label = "Opus   (Smart)",    id = "claude-opus-4-5"   },
+	{ label = "Haiku  (Fast)",     id = "claude-3-5-haiku-20241022"   },
+	{ label = "Sonnet (Balanced)", id = "claude-3-5-sonnet-20241022"  },
+	{ label = "Opus   (Smart)",    id = "claude-3-opus-20240229"      },
 }
 local DEFAULT_MODEL = 2  -- Sonnet
 

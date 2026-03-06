@@ -512,13 +512,12 @@ function AITabClass:ApplyBuildData(buildData)
 		end
 	end
 
+	-- Reinitialise the skill set so the Skills tab list control refreshes
+	skillsTab:SetActiveSkillSet(skillsTab.activeSkillSetId)
+
 	spec:AddUndoState()
 	skillsTab:AddUndoState()
 	build.buildFlag = true
-
-	-- Force Skills tab to reinitialise its list from the active skill set
-	-- (same thing SetActiveSkillSet does, without touching the data)
-	skillsTab.controls.groupList.list = skillsTab.socketGroupList
 
 	local sgCount = #skillsTab.socketGroupList
 	ConPrintf("AI Apply: done. socketGroupList final length = %d", sgCount)
@@ -526,9 +525,11 @@ function AITabClass:ApplyBuildData(buildData)
 		ConPrintf("AI Apply:  [%d] label='%s' gems=%d", i, sg.label or "", #(sg.gemList or {}))
 	end
 
+	-- Switch the view to Skills tab so the user can see the result
+	build.viewMode = "SKILLS"
+
 	self.aiStatus = #applied > 0
-		and "^2Applied: " .. table.concat(applied, ", ") ..
-			string.format(" | SG list size: %d", sgCount) .. " (check Skills tab)"
+		and "^2Applied: " .. table.concat(applied, ", ") .. " - Skills tab opened"
 		or  "^3Nothing was applied"
 end
 

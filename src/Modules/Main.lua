@@ -110,6 +110,10 @@ function main:Init()
 	self.notSupportedModTooltips = true
 	self.notSupportedTooltipText = " ^8(Not supported in PoB yet)"
 	self.POESESSID = ""
+	self.aiAPIKey = ""
+	self.aiProvider = 1   -- 1=Anthropic, 2=Local
+	self.aiLocalUrl = "http://localhost:11434/v1/chat/completions"
+	self.aiLocalModel = "llama3"
 	self.showPublicBuilds = true
 	self.showFlavourText = true
 	self.showAnimations = true
@@ -660,6 +664,10 @@ function main:LoadSettings(ignoreBuild)
 					self.dpiScaleOverridePercent = tonumber(node.attrib.dpiScaleOverridePercent) or 0
 					SetDPIScaleOverridePercent(self.dpiScaleOverridePercent)
 				end
+				self.aiAPIKey = node.attrib.aiAPIKey or ""
+				self.aiProvider = tonumber(node.attrib.aiProvider) or 1
+				self.aiLocalUrl = node.attrib.aiLocalUrl or "http://localhost:11434/v1/chat/completions"
+				self.aiLocalModel = node.attrib.aiLocalModel or "llama3"
 			end
 		end
 	end
@@ -791,6 +799,10 @@ function main:SaveSettings()
 		showAnimations = tostring(self.showAnimations),
 		showAllItemAffixes = tostring(self.showAllItemAffixes),
 		dpiScaleOverridePercent = tostring(self.dpiScaleOverridePercent),
+		aiAPIKey = self.aiAPIKey,
+		aiProvider = tostring(self.aiProvider),
+		aiLocalUrl = self.aiLocalUrl,
+		aiLocalModel = self.aiLocalModel,
 	} })
 	local res, errMsg = common.xml.SaveXMLFile(setXML, self.userPath.."Settings.xml")
 	if not res then

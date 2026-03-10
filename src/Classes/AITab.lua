@@ -436,15 +436,23 @@ function AITabClass:ApplyBuildData(buildData)
 		classId = classId or CLASS_NAME_MAP[className:lower()]
 		if classId ~= nil then
 			spec:SelectClass(classId)
+			spec:AddUndoState()
+			spec:SetWindowTitleWithBuildClass()
+			build:UpdateClassDropdowns()
+			build.buildFlag = true
 			t_insert(applied, "Class → " .. className)
 			-- Ascendancy
 			local ascendName = type(buildData.ascendancy) == "string" and buildData.ascendancy or nil
 			if ascendName and ascendName:lower() ~= "none" and ascendName ~= "" then
+				-- Use spec.curClass (updated by SelectClass above)
 				local curClass = spec.curClass
 				if curClass and curClass.classes then
 					for ascId, ascData in pairs(curClass.classes) do
 						if ascId > 0 and ascData.name and ascData.name:lower() == ascendName:lower() then
 							spec:SelectAscendClass(ascId)
+							spec:AddUndoState()
+							spec:SetWindowTitleWithBuildClass()
+							build.buildFlag = true
 							t_insert(applied, "Ascendancy → " .. ascendName)
 							break
 						end
@@ -515,8 +523,9 @@ function AITabClass:ApplyBuildData(buildData)
 	-- Reinitialise the skill set so the Skills tab list control refreshes
 	skillsTab:SetActiveSkillSet(skillsTab.activeSkillSetId)
 
-	spec:AddUndoState()
+	-- Final undo snapshots for gems / tree state
 	skillsTab:AddUndoState()
+	build.treeTab:AddUndoState()
 	build.buildFlag = true
 
 	local sgCount = #skillsTab.socketGroupList
@@ -525,11 +534,11 @@ function AITabClass:ApplyBuildData(buildData)
 		ConPrintf("AI Apply:  [%d] label='%s' gems=%d", i, sg.label or "", #(sg.gemList or {}))
 	end
 
-	-- Switch the view to Skills tab so the user can see the result
-	build.viewMode = "SKILLS"
+	-- Switch to Tree tab so the user can see the class/ascendancy starting position
+	build.viewMode = "TREE"
 
 	self.aiStatus = #applied > 0
-		and "^2Applied: " .. table.concat(applied, ", ") .. " - Skills tab opened"
+		and "^2Applied: " .. table.concat(applied, ", ") .. " - Tree tab opened"
 		or  "^3Nothing was applied"
 end
 

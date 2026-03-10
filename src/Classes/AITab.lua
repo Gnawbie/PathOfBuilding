@@ -515,48 +515,63 @@ function AITabClass:ApplyBuildData(buildData)
 	end
 
 	-- Notable / Keystone passive nodes
-	-- Use the tree's pre-built lookup maps (notableMap / keystoneMap) keyed by
-	-- lowercase display name, then resolve to the spec-local node by ID so that
-	-- spec:AllocNode receives a node with a valid .path.
+	-- spec:AllocNode(node) walks node.path — the full ordered chain of small
+	-- Normal connector nodes from the target back to the nearest allocated node —
+	-- and marks every node in that chain as allocated.  This means small nodes
+	-- are automatically allocated as connectors; we never need to name them.
+	-- Node names come from spec.tree.notableMap / keystoneMap (the tree's own
+	-- data), so they are always real PoB names.
 	local notables = type(buildData.notables) == "table" and buildData.notables or nil
 	ConPrintf("AI Apply: notables from JSON = %s", notables and table.concat(notables, ", ") or "nil/empty")
 	if notables and #notables > 0 then
-		local allocCount = 0
-		local missCount  = 0
+		local allocCount  = 0
+		local smallCount  = 0   -- total small/connector nodes pulled in
+		local missCount   = 0
 		local noPathCount = 0
 		local notableMap  = spec.tree.notableMap  or {}
 		local keystoneMap = spec.tree.keystoneMap or {}
+
+		-- Rebuild paths from current state before starting, so every specNode.path
+		-- reflects the current allocation (class start + any ascendancy start nodes).
+		spec:BuildAllDependsAndPaths()
+
 		for _, nodeName in ipairs(notables) do
 			if type(nodeName) == "string" and #nodeName > 0 then
 				local nameLower = nodeName:lower()
-				-- Look up in the tree's pre-built name maps (returns the tree-level node)
+				-- Resolve via tree's own maps → always a real PoB node name
 				local treeNode = notableMap[nameLower] or keystoneMap[nameLower]
 				if treeNode then
-					-- Get the spec-local copy (has .path, .alloc, etc. set by BuildAllDependsAndPaths)
 					local specNode = spec.nodes[treeNode.id]
 					if specNode then
 						if specNode.path then
-							spec:AllocNode(specNode)
+							-- node.path is the chain of small connector nodes + the target.
+							-- AllocNode allocates every node in that chain.
+							local pathLen = #specNode.path   -- includes target + small connectors
+							spec:AllocNode(specNode)          -- allocates full path
 							allocCount = allocCount + 1
-							ConPrintf("AI Apply: allocated notable '%s' (id=%s)", treeNode.dn or treeNode.name, tostring(treeNode.id))
+							-- path[1] is the target notable; path[2..n] are small nodes
+							local connectors = pathLen > 1 and pathLen - 1 or 0
+							smallCount = smallCount + connectors
+							ConPrintf("AI Apply: allocated '%s' via %d connector node(s) (path len=%d)",
+								treeNode.dn or treeNode.name, connectors, pathLen)
 						else
 							noPathCount = noPathCount + 1
-							ConPrintf("AI Apply: notable '%s' has no path (unreachable from current class start)", nodeName)
+							ConPrintf("AI Apply: '%s' unreachable (no path from class start)", nodeName)
 						end
 					else
 						missCount = missCount + 1
-						ConPrintf("AI Apply: notable '%s' found in tree but not in spec.nodes (id=%s)", nodeName, tostring(treeNode.id))
+						ConPrintf("AI Apply: '%s' id=%s found in tree map but missing from spec.nodes", nodeName, tostring(treeNode.id))
 					end
 				else
 					missCount = missCount + 1
-					ConPrintf("AI Apply: notable '%s' not found in notableMap or keystoneMap", nodeName)
+					ConPrintf("AI Apply: '%s' not found in notableMap or keystoneMap", nodeName)
 				end
 			end
 		end
 		if allocCount > 0 then
 			spec:AddUndoState()
 			build.buildFlag = true
-			t_insert(applied, allocCount .. " notable(s) allocated")
+			t_insert(applied, allocCount .. " notable(s) + " .. smallCount .. " connector node(s)")
 		end
 		if missCount > 0 or noPathCount > 0 then
 			t_insert(applied, "^8(" .. missCount .. " unrecognised, " .. noPathCount .. " unreachable)")

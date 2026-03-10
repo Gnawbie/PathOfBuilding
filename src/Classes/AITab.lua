@@ -26,14 +26,32 @@ local CLASS_NAME_MAP = {
 }
 
 -- System prompt shared by both requests
-local SYSTEM_PROMPT = [[You are an expert Path of Exile build advisor embedded inside Path of Building. When given a build request, provide:
+local SYSTEM_PROMPT = [[You are an expert Path of Exile build advisor embedded inside Path of Building (PoB).
+
+CRITICAL: Use ONLY real, exact in-game names. Never invent names.
+
+GEM NAMES — use exact names as they appear in PoB (examples):
+  Active: "Dark Pact", "Righteous Fire", "Explosive Arrow", "Earthquake", "Arc", "Toxic Rain", "Winter Orb"
+  Support: "Multistrike Support", "Added Fire Damage Support", "Awakened Burning Damage Support", "Elemental Focus Support", "Lifetap Support"
+
+PASSIVE TREE NOTABLES — list 8-12 by their EXACT PoB passive tree name (examples by theme):
+  Life: "Constitution", "Warrior's Blood", "Barbarism", "Bloodless", "Blood Drinker", "Inveterate", "Heart of the Warrior", "Scion of the Vaal"
+  Leech: "Vitality Void", "Hematophagy", "Brutal Fervour"
+  Melee: "Slaughter", "Dirty Techniques", "Martial Mastery", "Master of Force", "Cleaving"
+  Crit: "Heartseeker", "Coordination", "Ambidexterity", "Assassination"
+  Defenses: "Juggernaut", "Arsonist", "Iron Reflexes", "Leather and Steel", "Prismatic Skin", "Overcharge"
+  Reservation/Aura: "Charisma", "Sovereignty", "Dynamo"
+  Keystones (use when key to build): "Vaal Pact", "Blood Magic", "Avatar of Fire", "Resolute Technique", "Elemental Overload", "Acrobatics", "Iron Reflexes", "Unwavering Stance", "Ancestral Bond"
+
+When given a build request, provide:
 1. Build concept summary (2-3 sentences)
 2. Recommended class and ascendancy
-3. Core skill gems (main 6-link with support gems)
-4. Key passive tree priorities (clusters and notable nodes to aim for)
+3. Core skill gems — list up to 6 using exact gem names (active skill first, then supports)
+4. Key passive tree notables — list 8-12 exact node names from the examples above (or other real PoB notable names)
 5. Essential unique items
 6. Stat priorities for rare items
-Be specific, practical, and concise. If a current build context is provided, tailor advice to improve or pivot it.]]
+
+Be specific and concise. If a current build context is provided, tailor advice to improve or pivot it.]]
 
 local AITabClass = newClass("AITab", "ControlHost", "Control", function(self, build)
 	self.ControlHost()
@@ -474,6 +492,8 @@ function AITabClass:ApplyBuildData(buildData)
 	ConPrintf("AI Apply: notables from JSON = %s", notables and table.concat(notables, ", ") or "nil/empty")
 	if notables and #notables > 0 then
 		local allocCount = 0
+		local missCount  = 0
+		local noPathCount = 0
 		local notableMap  = spec.tree.notableMap  or {}
 		local keystoneMap = spec.tree.keystoneMap or {}
 		for _, nodeName in ipairs(notables) do
@@ -490,12 +510,15 @@ function AITabClass:ApplyBuildData(buildData)
 							allocCount = allocCount + 1
 							ConPrintf("AI Apply: allocated notable '%s' (id=%s)", treeNode.dn or treeNode.name, tostring(treeNode.id))
 						else
+							noPathCount = noPathCount + 1
 							ConPrintf("AI Apply: notable '%s' has no path (unreachable from current class start)", nodeName)
 						end
 					else
+						missCount = missCount + 1
 						ConPrintf("AI Apply: notable '%s' found in tree but not in spec.nodes (id=%s)", nodeName, tostring(treeNode.id))
 					end
 				else
+					missCount = missCount + 1
 					ConPrintf("AI Apply: notable '%s' not found in notableMap or keystoneMap", nodeName)
 				end
 			end
@@ -504,6 +527,9 @@ function AITabClass:ApplyBuildData(buildData)
 			spec:AddUndoState()
 			build.buildFlag = true
 			t_insert(applied, allocCount .. " notable(s) allocated")
+		end
+		if missCount > 0 or noPathCount > 0 then
+			t_insert(applied, "^8(" .. missCount .. " unrecognised, " .. noPathCount .. " unreachable)")
 		end
 	end
 

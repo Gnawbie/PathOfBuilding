@@ -44,11 +44,17 @@ PASSIVE TREE NOTABLES — list 25-30 by their EXACT PoB passive tree name (examp
   Keystones (use when key to build): "Vaal Pact", "Blood Magic", "Avatar of Fire", "Resolute Technique", "Elemental Overload", "Acrobatics", "Iron Reflexes", "Unwavering Stance", "Ancestral Bond"
   Ascendancy notables: include ALL relevant ascendancy notables for the chosen ascendancy (e.g. all 6-8 Chieftain notables, all Slayer notables, etc.)
 
+BLOODLINES (secondary ascendancy) — optional but supported:
+- A build can take a Bloodline in ADDITION to a regular ascendancy.
+- Max 8 passive points total shared between ascendancy + bloodline combined.
+- If a bloodline complements the build, name it and include its relevant notables.
+- Example: "Bloodline: Chaos Bloodline" with 2-3 bloodline notables + 5-6 ascendancy notables (total ≤ 8).
+
 When given a build request, provide:
 1. Build concept summary (2-3 sentences)
-2. Recommended class and ascendancy
+2. Recommended class and ascendancy; optionally a Bloodline if it improves the build
 3. Core skill gems — list up to 6 using exact gem names (active skill first, then supports)
-4. Key passive tree notables — list 25-30 exact node names including all ascendancy notables for the chosen ascendancy
+4. Key passive tree notables — list 25-30 exact node names including all ascendancy notables (and bloodline notables if a bloodline is chosen); total ascendancy + bloodline nodes ≤ 8
 5. Essential unique items
 6. Stat priorities for rare items
 
@@ -418,18 +424,34 @@ function AITabClass:ApplyBuild()
 	local notableList  = #notableNames  > 0 and table.concat(notableNames,  ", ") or "Constitution, Warrior's Blood, Blood Drinker, Vitality Void, Heartseeker"
 	local ascendList   = #ascendNames   > 0 and table.concat(ascendNames,   ", ") or ""
 
+	-- Bloodline (secondary/alternate ascendancy) names — exclude legacy Warden/Warlock/Primalist
+	local bloodlineNames = {}
+	local legacyBloodlineIds = { Warden = true, Warlock = true, Primalist = true }
+	if tree and tree.alternate_ascendancies then
+		for _, alt in pairs(tree.alternate_ascendancies) do
+			if alt.name and alt.id and not legacyBloodlineIds[alt.id] then
+				t_insert(bloodlineNames, alt.name)
+			end
+		end
+		table.sort(bloodlineNames)
+	end
+	local bloodlineList = #bloodlineNames > 0 and table.concat(bloodlineNames, ", ") or ""
+
 	local extractSys  = "You extract structured data from Path of Exile build descriptions. Output ONLY valid JSON with no surrounding text."
 	local extractUser = table.concat({
 		"From the following Path of Exile build advice, extract a JSON object with exactly these fields:",
 		"  \"class\": one of [Marauder, Ranger, Witch, Duelist, Templar, Shadow, Scion]",
 		"  \"ascendancy\": the ascendancy subclass name, or \"None\" if not mentioned",
 		"  \"gems\": an array of up to 6 gem name strings for the main skill link (active skill first, then supports)",
+		"  \"bloodline\": the Bloodline (secondary ascendancy) name if one is recommended, or null.",
+		"    Valid bloodline names: " .. (bloodlineList ~= "" and bloodlineList or "none available"),
 		"  \"notables\": an array of up to 30 passive node names that best match the build concept.",
 		"    You MUST choose names ONLY from these lists (do not invent any other names):",
 		"    Keystones:  " .. keystoneList,
 		"    Notables:   " .. notableList,
 		"    Ascendancy: " .. ascendList,
-		"    Include ALL relevant ascendancy notables for the chosen ascendancy (they are in the Ascendancy list above).",
+		"    Include ALL relevant ascendancy notables for the chosen ascendancy (and bloodline notables if a bloodline is chosen).",
+		"    Total ascendancy + bloodline notables must not exceed 8.",
 		"",
 		"Rules:",
 		"- Output ONLY valid JSON. No markdown, no explanation, no code fences.",
@@ -526,6 +548,24 @@ function AITabClass:ApplyBuildData(buildData)
 		else
 			self.aiStatus = "^1Unknown class: " .. className
 			return
+		end
+	end
+
+	-- Bloodline (secondary / alternate ascendancy)
+	-- Max 8 passive points shared between primary ascendancy + bloodline.
+	local bloodlineName = type(buildData.bloodline) == "string" and buildData.bloodline or nil
+	if bloodlineName and bloodlineName:lower() ~= "none" and bloodlineName ~= "" then
+		if spec.tree and spec.tree.alternate_ascendancies then
+			for bloodlineId, bloodlineData in pairs(spec.tree.alternate_ascendancies) do
+				if bloodlineData.name and bloodlineData.name:lower() == bloodlineName:lower() then
+					spec:SelectSecondaryAscendClass(bloodlineId)
+					spec:AddUndoState()
+					spec:SetWindowTitleWithBuildClass()
+					build.buildFlag = true
+					t_insert(applied, "Bloodline → " .. bloodlineData.name)
+					break
+				end
+			end
 		end
 	end
 

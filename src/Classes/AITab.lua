@@ -523,9 +523,8 @@ function AITabClass:ApplyBuildData(buildData)
 	-- Reinitialise the skill set so the Skills tab list control refreshes
 	skillsTab:SetActiveSkillSet(skillsTab.activeSkillSetId)
 
-	-- Final undo snapshots for gems / tree state
+	-- Final undo snapshot for gem changes
 	skillsTab:AddUndoState()
-	build.treeTab:AddUndoState()
 	build.buildFlag = true
 
 	local sgCount = #skillsTab.socketGroupList

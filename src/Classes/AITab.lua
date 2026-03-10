@@ -467,22 +467,36 @@ function AITabClass:ApplyBuildData(buildData)
 	end
 
 	-- Notable / Keystone passive nodes
+	-- Use the tree's pre-built lookup maps (notableMap / keystoneMap) keyed by
+	-- lowercase display name, then resolve to the spec-local node by ID so that
+	-- spec:AllocNode receives a node with a valid .path.
 	local notables = type(buildData.notables) == "table" and buildData.notables or nil
+	ConPrintf("AI Apply: notables from JSON = %s", notables and table.concat(notables, ", ") or "nil/empty")
 	if notables and #notables > 0 then
 		local allocCount = 0
+		local notableMap  = spec.tree.notableMap  or {}
+		local keystoneMap = spec.tree.keystoneMap or {}
 		for _, nodeName in ipairs(notables) do
 			if type(nodeName) == "string" and #nodeName > 0 then
 				local nameLower = nodeName:lower()
-				for _, node in pairs(spec.nodes) do
-					if node.name and node.name:lower() == nameLower
-						and (node.type == "Notable" or node.type == "Keystone")
-						and node.path
-					then
-						spec:AllocNode(node)
-						allocCount = allocCount + 1
-						ConPrintf("AI Apply: allocated notable '%s'", node.name)
-						break
+				-- Look up in the tree's pre-built name maps (returns the tree-level node)
+				local treeNode = notableMap[nameLower] or keystoneMap[nameLower]
+				if treeNode then
+					-- Get the spec-local copy (has .path, .alloc, etc. set by BuildAllDependsAndPaths)
+					local specNode = spec.nodes[treeNode.id]
+					if specNode then
+						if specNode.path then
+							spec:AllocNode(specNode)
+							allocCount = allocCount + 1
+							ConPrintf("AI Apply: allocated notable '%s' (id=%s)", treeNode.dn or treeNode.name, tostring(treeNode.id))
+						else
+							ConPrintf("AI Apply: notable '%s' has no path (unreachable from current class start)", nodeName)
+						end
+					else
+						ConPrintf("AI Apply: notable '%s' found in tree but not in spec.nodes (id=%s)", nodeName, tostring(treeNode.id))
 					end
+				else
+					ConPrintf("AI Apply: notable '%s' not found in notableMap or keystoneMap", nodeName)
 				end
 			end
 		end

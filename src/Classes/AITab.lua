@@ -367,18 +367,19 @@ function AITabClass:ApplyBuild()
 		"  \"class\": one of [Marauder, Ranger, Witch, Duelist, Templar, Shadow, Scion]",
 		"  \"ascendancy\": the ascendancy subclass name, or \"None\" if not mentioned",
 		"  \"gems\": an array of up to 6 gem name strings for the main skill link (active skill first, then supports)",
+		"  \"notables\": an array of up to 12 notable or keystone passive node names important to this build (use exact PoB passive tree names, e.g. \"Vaal Pact\", \"Iron Reflexes\", \"Avatar of Fire\", \"Acrobatics\")",
 		"",
 		"Rules:",
 		"- Output ONLY valid JSON. No markdown, no explanation, no code fences.",
 		"- Use exact PoB gem names where possible (e.g. \"Lightning Strike\", \"Multistrike Support\").",
 		"- If the class is not clearly stated, infer it from the ascendancy.",
-		"- If a field cannot be determined, use null for strings or [] for gems.",
+		"- If a field cannot be determined, use null for strings or [] for arrays.",
 		"",
 		"Build advice:",
 		self.aiResponse,
 	}, "\n")
 
-	local url, header, body = self:BuildRequestParams(extractSys, extractUser, 400)
+	local url, header, body = self:BuildRequestParams(extractSys, extractUser, 700)
 
 	launch:DownloadPage(url,
 		function(response, errMsg)
@@ -465,6 +466,33 @@ function AITabClass:ApplyBuildData(buildData)
 		end
 	end
 
+	-- Notable / Keystone passive nodes
+	local notables = type(buildData.notables) == "table" and buildData.notables or nil
+	if notables and #notables > 0 then
+		local allocCount = 0
+		for _, nodeName in ipairs(notables) do
+			if type(nodeName) == "string" and #nodeName > 0 then
+				local nameLower = nodeName:lower()
+				for _, node in pairs(spec.nodes) do
+					if node.name and node.name:lower() == nameLower
+						and (node.type == "Notable" or node.type == "Keystone")
+						and node.path
+					then
+						spec:AllocNode(node)
+						allocCount = allocCount + 1
+						ConPrintf("AI Apply: allocated notable '%s'", node.name)
+						break
+					end
+				end
+			end
+		end
+		if allocCount > 0 then
+			spec:AddUndoState()
+			build.buildFlag = true
+			t_insert(applied, allocCount .. " notable(s) allocated")
+		end
+	end
+
 	-- Gems
 	local gems = type(buildData.gems) == "table" and buildData.gems or nil
 	if gems and #gems > 0 then
@@ -533,7 +561,17 @@ function AITabClass:ApplyBuildData(buildData)
 		ConPrintf("AI Apply:  [%d] label='%s' gems=%d", i, sg.label or "", #(sg.gemList or {}))
 	end
 
-	-- Switch to Tree tab so the user can see the class/ascendancy starting position
+	-- Centre the tree viewport on the class starting node
+	if spec.curClass and spec.curClass.startNodeId then
+		local startNode = spec.nodes[spec.curClass.startNodeId]
+		if startNode then
+			build.treeTab.jumpToNode = true
+			build.treeTab.jumpToX   = startNode.x
+			build.treeTab.jumpToY   = startNode.y
+		end
+	end
+
+	-- Switch to Tree tab so the user can see the populated tree
 	build.viewMode = "TREE"
 
 	self.aiStatus = #applied > 0

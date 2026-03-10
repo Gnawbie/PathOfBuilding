@@ -34,7 +34,7 @@ GEM NAMES — use exact names as they appear in PoB (examples):
   Active: "Dark Pact", "Righteous Fire", "Explosive Arrow", "Earthquake", "Arc", "Toxic Rain", "Winter Orb"
   Support: "Multistrike Support", "Added Fire Damage Support", "Awakened Burning Damage Support", "Elemental Focus Support", "Lifetap Support"
 
-PASSIVE TREE NOTABLES — list 8-12 by their EXACT PoB passive tree name (examples by theme):
+PASSIVE TREE NOTABLES — list 25-30 by their EXACT PoB passive tree name (examples by theme):
   Life: "Constitution", "Warrior's Blood", "Barbarism", "Bloodless", "Blood Drinker", "Inveterate", "Heart of the Warrior", "Scion of the Vaal"
   Leech: "Vitality Void", "Hematophagy", "Brutal Fervour"
   Melee: "Slaughter", "Dirty Techniques", "Martial Mastery", "Master of Force", "Cleaving"
@@ -42,12 +42,13 @@ PASSIVE TREE NOTABLES — list 8-12 by their EXACT PoB passive tree name (exampl
   Defenses: "Juggernaut", "Arsonist", "Iron Reflexes", "Leather and Steel", "Prismatic Skin", "Overcharge"
   Reservation/Aura: "Charisma", "Sovereignty", "Dynamo"
   Keystones (use when key to build): "Vaal Pact", "Blood Magic", "Avatar of Fire", "Resolute Technique", "Elemental Overload", "Acrobatics", "Iron Reflexes", "Unwavering Stance", "Ancestral Bond"
+  Ascendancy notables: include ALL relevant ascendancy notables for the chosen ascendancy (e.g. all 6-8 Chieftain notables, all Slayer notables, etc.)
 
 When given a build request, provide:
 1. Build concept summary (2-3 sentences)
 2. Recommended class and ascendancy
 3. Core skill gems — list up to 6 using exact gem names (active skill first, then supports)
-4. Key passive tree notables — list 8-12 exact node names from the examples above (or other real PoB notable names)
+4. Key passive tree notables — list 25-30 exact node names including all ascendancy notables for the chosen ascendancy
 5. Essential unique items
 6. Stat priorities for rare items
 
@@ -379,12 +380,12 @@ function AITabClass:ApplyBuild()
 	self.requesting = true
 	self.aiStatus   = "^xFFD700Extracting build data..."
 
-	-- Build the valid notable/keystone name lists straight from the live tree data
-	-- so the extract model can ONLY pick names that actually exist in PoB.
-	local keystoneNames, notableNames = {}, {}
+	-- Build the valid notable/keystone/ascendancy name lists straight from the
+	-- live tree data so the extract model can ONLY pick names that exist in PoB.
+	local keystoneNames, notableNames, ascendNames = {}, {}, {}
 	local tree = self.build.spec.tree
 	if tree then
-		local seenKs, seenNo = {}, {}
+		local seenKs, seenNo, seenAsc = {}, {}, {}
 		for _, node in pairs(tree.keystoneMap) do
 			local dn = node.dn or node.name
 			if dn and not seenKs[dn] then
@@ -399,11 +400,23 @@ function AITabClass:ApplyBuild()
 				t_insert(notableNames, dn)
 			end
 		end
+		-- Ascendancy notables live in ascendancyMap (separate from notableMap)
+		if tree.ascendancyMap then
+			for _, node in pairs(tree.ascendancyMap) do
+				local dn = node.dn or node.name
+				if dn and not seenAsc[dn] then
+					seenAsc[dn] = true
+					t_insert(ascendNames, dn)
+				end
+			end
+		end
 		table.sort(keystoneNames)
 		table.sort(notableNames)
+		table.sort(ascendNames)
 	end
 	local keystoneList = #keystoneNames > 0 and table.concat(keystoneNames, ", ") or "Vaal Pact, Iron Reflexes, Avatar of Fire, Acrobatics, Resolute Technique"
 	local notableList  = #notableNames  > 0 and table.concat(notableNames,  ", ") or "Constitution, Warrior's Blood, Blood Drinker, Vitality Void, Heartseeker"
+	local ascendList   = #ascendNames   > 0 and table.concat(ascendNames,   ", ") or ""
 
 	local extractSys  = "You extract structured data from Path of Exile build descriptions. Output ONLY valid JSON with no surrounding text."
 	local extractUser = table.concat({
@@ -411,10 +424,12 @@ function AITabClass:ApplyBuild()
 		"  \"class\": one of [Marauder, Ranger, Witch, Duelist, Templar, Shadow, Scion]",
 		"  \"ascendancy\": the ascendancy subclass name, or \"None\" if not mentioned",
 		"  \"gems\": an array of up to 6 gem name strings for the main skill link (active skill first, then supports)",
-		"  \"notables\": an array of up to 12 passive node names that best match the build concept.",
-		"    You MUST choose names ONLY from these two lists (do not invent any other names):",
-		"    Keystones: " .. keystoneList,
-		"    Notables:  " .. notableList,
+		"  \"notables\": an array of up to 30 passive node names that best match the build concept.",
+		"    You MUST choose names ONLY from these lists (do not invent any other names):",
+		"    Keystones:  " .. keystoneList,
+		"    Notables:   " .. notableList,
+		"    Ascendancy: " .. ascendList,
+		"    Include ALL relevant ascendancy notables for the chosen ascendancy (they are in the Ascendancy list above).",
 		"",
 		"Rules:",
 		"- Output ONLY valid JSON. No markdown, no explanation, no code fences.",
@@ -427,7 +442,7 @@ function AITabClass:ApplyBuild()
 		self.aiResponse,
 	}, "\n")
 
-	local url, header, body = self:BuildRequestParams(extractSys, extractUser, 700)
+	local url, header, body = self:BuildRequestParams(extractSys, extractUser, 900)
 
 	launch:DownloadPage(url,
 		function(response, errMsg)
@@ -528,8 +543,9 @@ function AITabClass:ApplyBuildData(buildData)
 		local smallCount  = 0   -- total small/connector nodes pulled in
 		local missCount   = 0
 		local noPathCount = 0
-		local notableMap  = spec.tree.notableMap  or {}
-		local keystoneMap = spec.tree.keystoneMap or {}
+		local notableMap    = spec.tree.notableMap    or {}
+		local keystoneMap   = spec.tree.keystoneMap   or {}
+		local ascendancyMap = spec.tree.ascendancyMap or {}
 
 		-- Rebuild paths from current state before starting, so every specNode.path
 		-- reflects the current allocation (class start + any ascendancy start nodes).
@@ -539,7 +555,8 @@ function AITabClass:ApplyBuildData(buildData)
 			if type(nodeName) == "string" and #nodeName > 0 then
 				local nameLower = nodeName:lower()
 				-- Resolve via tree's own maps → always a real PoB node name
-				local treeNode = notableMap[nameLower] or keystoneMap[nameLower]
+				-- ascendancyMap covers ascendancy notables (separate from notableMap)
+				local treeNode = notableMap[nameLower] or keystoneMap[nameLower] or ascendancyMap[nameLower]
 				if treeNode then
 					local specNode = spec.nodes[treeNode.id]
 					if specNode then

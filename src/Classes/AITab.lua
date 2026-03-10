@@ -379,19 +379,49 @@ function AITabClass:ApplyBuild()
 	self.requesting = true
 	self.aiStatus   = "^xFFD700Extracting build data..."
 
+	-- Build the valid notable/keystone name lists straight from the live tree data
+	-- so the extract model can ONLY pick names that actually exist in PoB.
+	local keystoneNames, notableNames = {}, {}
+	local tree = self.build.spec.tree
+	if tree then
+		local seenKs, seenNo = {}, {}
+		for _, node in pairs(tree.keystoneMap) do
+			local dn = node.dn or node.name
+			if dn and not seenKs[dn] then
+				seenKs[dn] = true
+				t_insert(keystoneNames, dn)
+			end
+		end
+		for _, node in pairs(tree.notableMap) do
+			local dn = node.dn or node.name
+			if dn and not seenNo[dn] and not node.ascendancyName then
+				seenNo[dn] = true
+				t_insert(notableNames, dn)
+			end
+		end
+		table.sort(keystoneNames)
+		table.sort(notableNames)
+	end
+	local keystoneList = #keystoneNames > 0 and table.concat(keystoneNames, ", ") or "Vaal Pact, Iron Reflexes, Avatar of Fire, Acrobatics, Resolute Technique"
+	local notableList  = #notableNames  > 0 and table.concat(notableNames,  ", ") or "Constitution, Warrior's Blood, Blood Drinker, Vitality Void, Heartseeker"
+
 	local extractSys  = "You extract structured data from Path of Exile build descriptions. Output ONLY valid JSON with no surrounding text."
 	local extractUser = table.concat({
 		"From the following Path of Exile build advice, extract a JSON object with exactly these fields:",
 		"  \"class\": one of [Marauder, Ranger, Witch, Duelist, Templar, Shadow, Scion]",
 		"  \"ascendancy\": the ascendancy subclass name, or \"None\" if not mentioned",
 		"  \"gems\": an array of up to 6 gem name strings for the main skill link (active skill first, then supports)",
-		"  \"notables\": an array of up to 12 notable or keystone passive node names important to this build (use exact PoB passive tree names, e.g. \"Vaal Pact\", \"Iron Reflexes\", \"Avatar of Fire\", \"Acrobatics\")",
+		"  \"notables\": an array of up to 12 passive node names that best match the build concept.",
+		"    You MUST choose names ONLY from these two lists (do not invent any other names):",
+		"    Keystones: " .. keystoneList,
+		"    Notables:  " .. notableList,
 		"",
 		"Rules:",
 		"- Output ONLY valid JSON. No markdown, no explanation, no code fences.",
-		"- Use exact PoB gem names where possible (e.g. \"Lightning Strike\", \"Multistrike Support\").",
+		"- Use exact gem names as they appear in Path of Exile (e.g. \"Dark Pact\", \"Multistrike Support\").",
 		"- If the class is not clearly stated, infer it from the ascendancy.",
 		"- If a field cannot be determined, use null for strings or [] for arrays.",
+		"- For notables: if the build advice uses vague/invented names, map them to the closest real names from the lists above.",
 		"",
 		"Build advice:",
 		self.aiResponse,
